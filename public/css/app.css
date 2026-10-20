@@ -42,7 +42,9 @@ button { cursor: pointer; }
 
 .home {
   min-height: 100vh;
-  padding: 48px 56px 72px;
+  display: flex;
+  flex-direction: column;
+  padding: 48px 56px 28px;
   max-width: 1180px;
   margin: 0 auto;
 }
@@ -52,6 +54,12 @@ button { cursor: pointer; }
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 36px;
+  flex-wrap: wrap;
+}
+.home .library-actions {
+  margin-top: auto;
+  width: min(calc(var(--sidebar) - 28px), 100%);
+  padding-top: 28px;
 }
 .eyebrow {
   margin: 0 0 6px;

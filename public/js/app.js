@@ -300,13 +300,19 @@ async function renderHome() {
           <p class="eyebrow">Library</p>
           <h1>Book Assistant</h1>
         </div>
-        <button class="primary" id="new-book">New book</button>
+        <button class="primary" id="new-book" type="button">New book</button>
       </header>
       <p class="banner" id="home-error" hidden></p>
       <section class="book-grid" id="book-grid"></section>
+      <div class="side-actions library-actions">
+        <button class="side-tool" id="export-books" type="button">${icon("download")} Export</button>
+        <button class="side-tool" id="import-books" type="button">${icon("upload")} Import</button>
+      </div>
     </main>
   `;
   document.querySelector("#new-book").addEventListener("click", createBook);
+  document.querySelector("#export-books").addEventListener("click", exportBooks);
+  document.querySelector("#import-books").addEventListener("click", importBooks);
   try {
     state.projects = await api.listProjects();
     paintProjects();
