@@ -786,15 +786,13 @@ function renameChapterInline(id, node) {
 async function deleteChapter(id) {
   const chapter = state.project.chapters.find((item) => item.id === id);
   if (!chapter) return;
-  if ((chapter.content || "").trim()) {
-    const ok = await modal({
-      title: "Delete chapter",
-      text: `Remove “${chapter.title || "Untitled chapter"}” from this book?`,
-      confirmLabel: "Delete",
-      danger: true,
-    });
-    if (!ok) return;
-  }
+  const ok = await modal({
+    title: "Delete chapter",
+    text: `Remove “${chapter.title || "Untitled chapter"}” from this book?`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   const index = state.project.chapters.findIndex((item) => item.id === id);
   state.project.chapters.splice(index, 1);
   touch(null);
