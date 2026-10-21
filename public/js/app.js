@@ -1,6 +1,7 @@
 import * as api from "./api.js";
 import { countWords, textStats } from "./layout.js";
 import { NormEditor, syncMetrics } from "./editor.js";
+import { imprintPage, privacyPage } from "./legal.js";
 
 const app = document.querySelector("#app");
 const state = {
@@ -11,6 +12,7 @@ const state = {
   rev: 0,
   saving: false,
   collapsed: false,
+  privacyLang: "de",
   pendingPage: null,
   route: { name: "home" },
 };
@@ -90,6 +92,8 @@ function projectStats(project) {
 
 function parseRoute() {
   const parts = (location.hash.replace(/^#/, "") || "/").split("/").filter(Boolean);
+  if (parts[0] === "imprint") return { name: "imprint" };
+  if (parts[0] === "privacy") return { name: "privacy" };
   if (parts[0] !== "book" || !parts[1]) return { name: "home" };
   const bookId = parts[1];
   if (parts[2] === "manuscript") return { name: "manuscript", bookId };
@@ -242,7 +246,7 @@ async function flushSave() {
   }
 }
 
-function modal({ title, text, confirmLabel, danger, field, dismissOnly }) {
+function modal({ title, text, confirmLabel, danger, field, dismissOnly, match }) {
   return new Promise((resolve) => {
     const wrap = document.createElement("div");
     wrap.className = "backdrop";
@@ -250,10 +254,10 @@ function modal({ title, text, confirmLabel, danger, field, dismissOnly }) {
       <form class="dialog">
         <h2>${escapeHtml(title)}</h2>
         ${text ? `<p>${escapeHtml(text)}</p>` : ""}
-        ${field ? `<input type="text" name="value" value="${escapeAttr(field.value || "")}" placeholder="${escapeAttr(field.placeholder || "")}" />` : ""}
+        ${field ? `<input type="text" name="value" value="${escapeAttr(field.value || "")}" placeholder="${escapeAttr(field.placeholder || "")}" autocomplete="off" />` : ""}
         <div class="dialog-actions">
           ${dismissOnly ? "" : `<button type="button" class="ghost" data-cancel>Cancel</button>`}
-          <button type="submit" class="${danger ? "danger-btn" : "primary"}">${confirmLabel}</button>
+          <button type="submit" class="${danger ? "danger-btn" : "primary"}"${match != null ? " disabled" : ""}>${confirmLabel}</button>
         </div>
       </form>
     `;
@@ -265,15 +269,25 @@ function modal({ title, text, confirmLabel, danger, field, dismissOnly }) {
       if (event.target === wrap) close(null);
     });
     wrap.querySelector("[data-cancel]")?.addEventListener("click", () => close(null));
+    const input = wrap.querySelector("input");
+    const submit = wrap.querySelector("[type=submit]");
+    if (match != null && input) {
+      input.addEventListener("input", () => {
+        submit.disabled = input.value !== match;
+      });
+    }
     wrap.querySelector("form").addEventListener("submit", (event) => {
       event.preventDefault();
-      const input = wrap.querySelector("input");
+      if (match != null) {
+        if (!input || input.value !== match) return;
+        close(true);
+        return;
+      }
       close(field ? input.value.trim() : true);
     });
     document.body.appendChild(wrap);
-    const input = wrap.querySelector("input");
-    (input || wrap.querySelector("[type=submit]")).focus();
-    if (input) input.select();
+    (input || submit).focus();
+    if (input && match == null) input.select();
   });
 }
 
@@ -338,23 +352,25 @@ function paintProjects() {
       const stats = project.stats || { chapters: 0, pages: 0, words: 0 };
       return `
         <article class="book-card" data-id="${project.id}">
-          <button class="card-delete" data-delete aria-label="Delete ${escapeAttr(project.title)}">${icon("trash")}</button>
-          <div class="cover">
-            ${cover}
-            <div class="cover-actions">
-              <label class="chip">Cover<input class="cover-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden /></label>
+          <div class="book-face">
+            <button class="card-delete" type="button" data-delete aria-label="Delete ${escapeAttr(project.title)}">${icon("trash")}</button>
+            <div class="cover">
+              ${cover}
+              <div class="cover-actions">
+                <label class="chip">Cover<input class="cover-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden /></label>
+              </div>
             </div>
-          </div>
-          <div class="card-body">
-            <h2 class="card-title" data-title>${escapeHtml(project.title)}</h2>
-            <div class="meta">
-              <div class="meta-inner">
-                <dl>
-                  <div><dt>Chapters</dt><dd>${formatNumber(stats.chapters)}</dd></div>
-                  <div><dt>Pages</dt><dd>${formatNumber(stats.pages)}</dd></div>
-                  <div><dt>Words</dt><dd>${formatNumber(stats.words)}</dd></div>
-                  <div><dt>Edited</dt><dd data-time="${escapeAttr(project.updatedAt)}">${editedLabel(project.updatedAt)}</dd></div>
-                </dl>
+            <div class="card-body">
+              <h2 class="card-title" data-title>${escapeHtml(project.title)}</h2>
+              <div class="meta">
+                <div class="meta-inner">
+                  <dl>
+                    <div><dt>Chapters</dt><dd>${formatNumber(stats.chapters)}</dd></div>
+                    <div><dt>Pages</dt><dd>${formatNumber(stats.pages)}</dd></div>
+                    <div><dt>Words</dt><dd>${formatNumber(stats.words)}</dd></div>
+                    <div><dt>Edited</dt><dd data-time="${escapeAttr(project.updatedAt)}">${editedLabel(project.updatedAt)}</dd></div>
+                  </dl>
+                </div>
               </div>
             </div>
           </div>
@@ -394,11 +410,14 @@ async function createBook() {
 
 async function removeBook(id) {
   const project = state.projects.find((item) => item.id === id);
+  const title = project?.title || "Untitled book";
   const ok = await modal({
     title: "Delete book",
-    text: `“${project?.title || "This book"}” and its chapters will be removed from this computer.`,
+    text: `Type “${title}” to delete this book and all of its chapters.`,
     confirmLabel: "Delete",
     danger: true,
+    field: { value: "", placeholder: "Book name" },
+    match: title,
   });
   if (!ok) return;
   await api.deleteProject(id);
@@ -1314,12 +1333,43 @@ function paintDashboard() {
 
 async function onRoute() {
   state.route = parseRoute();
+  ensureFooter();
+  if (state.route.name === "imprint" || state.route.name === "privacy") {
+    if (state.dirty) await flushSave();
+    renderLegal(state.route.name);
+    return;
+  }
   if (state.route.name === "home") {
     if (state.dirty) await flushSave();
     await renderHome();
     return;
   }
   await openProject(state.route.bookId);
+}
+
+function ensureFooter() {
+  let foot = document.querySelector(".site-foot");
+  if (!foot) {
+    foot = document.createElement("footer");
+    foot.className = "site-foot";
+    foot.innerHTML = `<a href="#/imprint">Impressum</a><a href="#/privacy">Datenschutz</a>`;
+    document.body.appendChild(foot);
+  }
+  foot.querySelectorAll("a").forEach((link) => {
+    link.classList.toggle("is-current", link.getAttribute("href") === location.hash);
+  });
+}
+
+function renderLegal(name) {
+  state.editor?.destroy();
+  state.editor = null;
+  app.innerHTML = name === "imprint" ? imprintPage() : privacyPage(state.privacyLang);
+  app.querySelectorAll("[data-lang]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.privacyLang = button.dataset.lang;
+      renderLegal("privacy");
+    });
+  });
 }
 
 window.addEventListener("hashchange", onRoute);
